@@ -222,6 +222,7 @@
         setConnection(false, 'P2P 出错', true);
       }
       if (s === 'connected') {
+        updateRoster(p2p.roster());
         if (p2p.myId()) currentId = p2p.myId();
         role = p2p.role();
         setConnection(true, 'P2P Mesh 已连接（游戏数据点对点传输）');
