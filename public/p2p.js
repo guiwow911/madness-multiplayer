@@ -116,6 +116,14 @@
       emitState('signaling');
       return new Promise((resolve, reject) => {
         let settled = false;
+        let connectionTimer = setTimeout(() => {
+          if (settled) return;
+          settled = true;
+          try { ws.close(); } catch {}
+          const error = new Error('连接 Railway 信令服务器超时（12 秒）。请检查 Railway 部署状态、域名和 /signal WebSocket 路径。');
+          emitState('error', { message: error.message });
+          reject(error);
+        }, 12000);
         ws = new WebSocket(SIGNAL);
         ws.onopen = () => sendSignal({ type: 'join', room, name });
         ws.onmessage = async (event) => {
@@ -125,10 +133,10 @@
             id = message.id;
             role = message.role;
             emitState('solo', { waiting: true, role });
-            if (!settled) { settled = true; resolve(); }
+            if (!settled) { settled = true; clearTimeout(connectionTimer); resolve(); }
           } else if (message.type === 'error') {
             emitState('error', { message: message.message || '信令服务器错误。' });
-            if (!settled) { settled = true; reject(new Error(message.message || '信令服务器错误')); }
+            if (!settled) { settled = true; clearTimeout(connectionTimer); reject(new Error(message.message || '信令服务器错误')); }
           } else {
             try { await handleSignal(message); }
             catch (error) { emitState('error', { message: 'WebRTC 信令处理失败：' + error.message }); }
@@ -136,9 +144,14 @@
         };
         ws.onerror = () => {
           emitState('error', { message: '无法连接 Railway 信令服务，请检查服务是否 Online。' });
-          if (!settled) { settled = true; reject(new Error('无法连接 P2P 信令服务')); }
+          if (!settled) { settled = true; clearTimeout(connectionTimer); reject(new Error('无法连接 P2P 信令服务。目标地址：' + SIGNAL)); }
         };
-        ws.onclose = () => {
+        ws.onclose = (event) => {
+          if (!settled) {
+            settled = true;
+            clearTimeout(connectionTimer);
+            reject(new Error('信令连接在完成握手前关闭（代码 ' + event.code + '）：' + (event.reason || '服务器未返回欢迎消息')));
+          }
           closeAllPeers();
           roster.clear();
           emitRoster();
