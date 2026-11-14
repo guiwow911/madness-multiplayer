@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>暴力迪吧：多人竞技场（5 人联机测试）</title>
-  <link rel="stylesheet" href="/style.css">
+  <link rel="stylesheet" href="/style.css?v=20261115-1">
   <script>window.RufflePlayer = window.RufflePlayer || {}; window.RufflePlayer.config = { allowScriptAccess: true, autoplay: "on", frameRate: 60, logLevel: "error", letterbox: "on", warnOnUnsupportedContent: false };</script>
   <script src="/ruffle/ruffle.js"></script>
   <script src="/mqtt.min.js"></script>
@@ -16,7 +16,7 @@
       <div class="eyebrow">MADNESS PROJECT · WEB LAN TEST</div>
       <h1>多人竞技场</h1>
     </div>
-    <div class="top-status"><span id="connectionDot" class="dot"></span><span id="connectionText">正在连接本地房间…</span></div>
+    <div class="top-status"><span id="connectionDot" class="dot"></span><span id="connectionText">正在连接公网房间…</span></div>
   </header>
 
   <main class="layout">
@@ -89,9 +89,9 @@
       <div class="small-note">PVP 模式 · 每人自选两把武器 · 地图不刷普通敌人 · 命中事件同步到对手</div>
     </aside>
   </main>
-  <footer class="footer">本地测试版 · WebSocket 局域网转发 · Ruffle Flash 运行环境</footer>
+  <footer class="footer">5 人公网联机测试版 · Railway 信令 · WebRTC Mesh · Ruffle Flash 运行环境</footer>
 
-  <script src="/p2p.js"></script>
-  <script src="/client.js"></script>
+  <script src="/p2p.js?v=20261115-1"></script>
+  <script src="/client.js?v=20261115-1"></script>
 </body>
 </html>
