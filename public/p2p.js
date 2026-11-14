@@ -150,7 +150,8 @@
       if (!message || typeof message !== 'object') return false;
       return broadcast(message);
     },
-    connected() { return [...peers.values()].some(peer => peer.open); },
+    connected() { return peers.size > 0 && [...peers.values()].every(peer => peer.open); },
+    roster() { return [...roster.values()]; },
     connectedCount() { return [...peers.values()].filter(peer => peer.open).length; },
     myId() { return id; },
     role() { return role; },
