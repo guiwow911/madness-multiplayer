@@ -45,6 +45,9 @@ const server = http.createServer((req, res) => {
 
 const wss = new WebSocket.Server({ server, path: '/ws', perMessageDeflate: false, maxPayload: 16 * 1024 });
 const rooms = new Map();
+const signalRooms = new Map();
+const signalWss = new WebSocket.Server({ server, path: '/signal', perMessageDeflate: false, maxPayload: 64 * 1024 });
+const MAX_PLAYERS = 5;
 
 function send(socket, message) {
   if (socket.readyState === WebSocket.OPEN) socket.send(JSON.stringify(message));
@@ -93,8 +96,8 @@ wss.on('connection', (socket) => {
         room = { name: roomName, players: new Map(), started: false };
         rooms.set(roomName, room);
       }
-      if (room.players.size >= 2) {
-        send(socket, { type: 'error', message: '这个房间已满（本测试版每房间最多 2 人）。' });
+      if (room.players.size >= MAX_PLAYERS) {
+        send(socket, { type: 'error', message: '这个房间已满（每房间最多 5 人）。' });
         socket.close(1008, 'Room full');
         return;
       }
@@ -163,6 +166,67 @@ wss.on('connection', (socket) => {
   });
   socket.on('close', () => leave(peer));
   socket.on('error', () => leave(peer));
+});
+
+
+
+function signalRoster(room) {
+  return [...room.players.values()].map((peer) => ({ id: peer.id, name: peer.name, role: peer.role }));
+}
+function sendSignal(socket, message) {
+  if (socket.readyState === WebSocket.OPEN) socket.send(JSON.stringify(message));
+}
+function broadcastSignalRoster(room) {
+  const players = signalRoster(room);
+  for (const peer of room.players.values()) sendSignal(peer.socket, { type: 'roster', players });
+}
+function leaveSignalPeer(peer) {
+  if (!peer.room) return;
+  const room = peer.room;
+  room.players.delete(peer.id);
+  peer.room = null;
+  if (room.players.size === 0) signalRooms.delete(room.name);
+  else {
+    if (![...room.players.values()].some((p) => p.role === 'host')) {
+      const first = room.players.values().next().value;
+      if (first) first.role = 'host';
+    }
+    broadcastSignalRoster(room);
+  }
+}
+signalWss.on('connection', (socket) => {
+  const peer = { id: crypto.randomBytes(8).toString('hex'), socket, room: null, name: 'Player', role: 'guest' };
+  socket.on('message', (raw) => {
+    let message;
+    try { message = JSON.parse(raw.toString()); } catch { return; }
+    if (message.type === 'join') {
+      if (peer.room) return;
+      const roomName = String(message.room || 'MADNESS').trim().toUpperCase().replace(/[^A-Z0-9_-]/g, '').slice(0, 20) || 'MADNESS';
+      const playerName = String(message.name || 'Player').trim().replace(/[|\\r\\n]/g, '').slice(0, 20) || 'Player';
+      let room = signalRooms.get(roomName);
+      if (!room) { room = { name: roomName, players: new Map() }; signalRooms.set(roomName, room); }
+      if (room.players.size >= MAX_PLAYERS) {
+        sendSignal(socket, { type: 'error', message: '房间已满，每个房间最多 5 人。' });
+        socket.close(1008, 'Room full');
+        return;
+      }
+      peer.name = playerName;
+      peer.room = room;
+      peer.role = room.players.size === 0 ? 'host' : 'guest';
+      room.players.set(peer.id, peer);
+      sendSignal(socket, { type: 'welcome', id: peer.id, role: peer.role, room: room.name });
+      broadcastSignalRoster(room);
+      return;
+    }
+    if (!peer.room) return;
+    if (message.type === 'signal') {
+      const target = peer.room.players.get(String(message.to || ''));
+      if (!target || target === peer || !message.data || typeof message.data !== 'object') return;
+      sendSignal(target.socket, { type: 'signal', from: peer.id, data: message.data });
+    }
+  });
+  socket.on('close', () => leaveSignalPeer(peer));
+  socket.on('error', () => leaveSignalPeer(peer));
 });
 
 setInterval(() => {
