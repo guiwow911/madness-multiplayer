@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>暴力迪吧：多人竞技场（局域网测试）</title>
+  <title>暴力迪吧：多人竞技场（5 人联机测试）</title>
   <link rel="stylesheet" href="/style.css">
   <script>window.RufflePlayer = window.RufflePlayer || {}; window.RufflePlayer.config = { allowScriptAccess: true, autoplay: "on", frameRate: 60, logLevel: "error", letterbox: "on", warnOnUnsupportedContent: false };</script>
   <script src="/ruffle/ruffle.js"></script>
@@ -25,11 +25,11 @@
         <div id="ruffleContainer" class="stage"></div>
         <div class="stage-footer"><span>WEB TEST BUILD · 60 FPS</span><span id="fpsLabel">加载 Flash 兼容层…</span></div>
       </div>
-      <div class="notice"><b>测试说明</b><span>双开后双方进入同一房间，由房主开始；两边的游戏启动页各点击一次 LAUNCH，随后自动进入竞技场，角色页点“完成”开打。</span></div>
+      <div class="notice"><b>测试说明</b><span>最多 5 人使用相同房间码加入，由房主开始；两边的游戏启动页各点击一次 LAUNCH，随后自动进入竞技场，角色页点“完成”开打。</span></div>
     </section>
 
     <aside class="side-panel">
-      <div class="panel-title"><span class="sigil">✦</span><div><h2>本地联机</h2><p>LOCAL ARENA ROOM</p></div></div>
+      <div class="panel-title"><span class="sigil">✦</span><div><h2>多人联机</h2><p>LOCAL ARENA ROOM</p></div></div>
       <label class="field-label" for="modeSelect">联机方式</label>
       <select id="modeSelect" class="field" style="margin-bottom:10px">
         <option value="p2p">P2P 公网联机（推荐）</option>
@@ -47,7 +47,7 @@
         <div class="p2p-head">P2P 公网联机</div>
         <div class="p2p-line">网络：<b id="p2pState">未连接</b></div>
         <div class="p2p-line">延迟：<b id="p2pLatency">-</b></div>
-        <div class="p2p-line small">游戏数据在两位玩家间<b>直连</b>，不经过任何服务器。</div>
+        <div class="p2p-line small">信令由 Railway 协调；游戏数据通过 WebRTC Mesh 在玩家之间点对点传输。</div>
       </div>
       <div class="divider"></div>
       <div class="loadout-title"><b>PVP 单挑配置</b><span>无敌人 · 只对战另一名玩家</span></div>
@@ -79,7 +79,7 @@
       </select>
 
       <div class="divider"></div>
-      <div class="players-head"><span>竞技场玩家</span><span id="playerCount" class="count">0 / 2</span></div>
+      <div class="players-head"><span>竞技场玩家</span><span id="playerCount" class="count">0 / 5</span></div>
       <div id="playerList" class="player-list"><div class="empty">等待连接房间…</div></div>
       <div id="lobbyStatus" class="lobby-status">正在建立局域网连接</div>
 

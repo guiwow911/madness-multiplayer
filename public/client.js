@@ -57,7 +57,7 @@
   function updateRoster(players = []) {
     const me = players.find((peer) => peer.id === currentId);
     if (me) role = me.role;
-    $('playerCount').textContent = `${players.length} / 2`;
+    $('playerCount').textContent = `${players.length} / 5`;
     $('playerList').replaceChildren();
     if (!players.length) {
       const empty = document.createElement('div');
@@ -79,9 +79,9 @@
       row.append(icon, name, label);
       $('playerList').appendChild(row);
     }
-    const canStart = role === 'host' && players.length === 2 && !started && connected();
+    const canStart = role === 'host' && players.length >= 2 && !started && connected();
     $('startButton').disabled = !canStart;
-    $('startButton').textContent = started ? '已进入竞技场' : role === 'host' ? players.length === 2 ? '开始多人竞技场' : '等待第二位玩家' : '等待房主开始';
+    $('startButton').textContent = started ? '已进入竞技场' : role === 'host' ? players.length >= 2 ? '开始多人竞技场' : '等待玩家加入（至少 2 人）' : '等待房主开始';
   }
 
   function connected() {
@@ -122,7 +122,7 @@
       $('roomInput').disabled = true;
       $('nameInput').disabled = true;
       setConnection(true, `已连接 · ${message.room} · ${role === 'host' ? '房主' : '玩家'}`);
-      setStatus('连接成功；双开另一个浏览器窗口后即可开始。', 'good');
+      setStatus('连接成功；邀请朋友使用相同房间码加入，最多支持 5 人。', 'good');
     } else if (message.type === 'roster') {
       updateRoster(message.players || []);
       if (message.started && !started) setStatus('竞技场已启动。', 'good');
@@ -224,10 +224,10 @@
       if (s === 'connected') {
         if (p2p.myId()) currentId = p2p.myId();
         role = p2p.role();
-        setConnection(true, 'P2P 已直连（点对点，不经服务器）');
+        setConnection(true, 'P2P Mesh 已连接（游戏数据点对点传输）');
         $('roomInput').disabled = true;
         $('nameInput').disabled = true;
-        setStatus('P2P 直连成功；双方确认后由房主开始。', 'good');
+        setStatus('P2P Mesh 已建立；房主可在至少 2 人加入后开始。', 'good');
         startPing();
       } else {
         stopPing();

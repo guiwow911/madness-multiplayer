@@ -1,40 +1,169 @@
 (() => {
-  const SIGNAL = 'wss://broker.madness-project.net/ws';
+  const SIGNAL = 'wss://madness-multiplayer-production.up.railway.app/signal';
   const ICE = [{ urls: 'stun:stun.l.google.com:19302' }];
-  let ws, pc, channel, id, role, room, name, stateCb = () => {}, messageCb = () => {}, rosterCb = () => {}, remoteId;
-  const sendSignal = (data) => { if (ws?.readyState === WebSocket.OPEN) ws.send(JSON.stringify(data)); };
-  const emitState = (s, info = {}) => stateCb(s, info);
-  function closePeer() { try { channel?.close(); pc?.close(); } catch {} channel = pc = null; }
-  function setupPeer(initiator) {
-    closePeer(); pc = new RTCPeerConnection({ iceServers: ICE });
-    pc.onicecandidate = e => { if (e.candidate) sendSignal({ type: 'signal', to: remoteId, data: { candidate: e.candidate } }); };
-    pc.ondatachannel = e => bindChannel(e.channel);
-    if (initiator) bindChannel(pc.createDataChannel('game', { ordered: false, maxRetransmits: 0 }));
-    pc.onconnectionstatechange = () => { if (pc?.connectionState === 'connected') emitState('connected', { role }); else if (['failed','closed'].includes(pc?.connectionState)) emitState('error', { message: 'P2P 直连失败；请确认双方网络允许 WebRTC。' }); };
+  let ws = null, id = null, role = null, room = null, name = null;
+  const peers = new Map();
+  let stateCb = () => {}, messageCb = () => {}, rosterCb = () => {};
+  const emitState = (state, info = {}) => stateCb(state, info);
+  const sendSignal = (data) => {
+    if (ws && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify(data));
+  };
+  const roster = new Map();
+
+  function emitRoster() {
+    rosterCb([...roster.values()]);
   }
-  function bindChannel(ch) {
-    channel = ch; ch.onopen = () => emitState('connected', { role });
-    ch.onmessage = e => { try { const m = JSON.parse(e.data); if (m.type === 'roster') rosterCb(m.players); else messageCb(m); } catch {} };
+  function closePeer(peerId) {
+    const peer = peers.get(peerId);
+    if (!peer) return;
+    try { peer.channel?.close(); peer.pc?.close(); } catch {}
+    peers.delete(peerId);
   }
-  async function signaling(m) {
-    if (m.type === 'paired') {
-      remoteId = m.peer.id; role = m.role; id = m.id; setupPeer(role === 'host');
-      if (role === 'host') { const offer = await pc.createOffer(); await pc.setLocalDescription(offer); sendSignal({ type:'signal', to:remoteId, data:{ description:pc.localDescription } }); }
+  function closeAllPeers() {
+    for (const peerId of [...peers.keys()]) closePeer(peerId);
+  }
+  function sendToPeer(peerId, message) {
+    const peer = peers.get(peerId);
+    if (!peer || peer.channel?.readyState !== 'open') return false;
+    peer.channel.send(JSON.stringify(message));
+    return true;
+  }
+  function broadcast(message) {
+    let sent = false;
+    for (const peerId of peers.keys()) sent = sendToPeer(peerId, message) || sent;
+    return sent;
+  }
+  function bindChannel(peerId, channel) {
+    const peer = peers.get(peerId);
+    if (!peer) { channel.close(); return; }
+    peer.channel = channel;
+    channel.onopen = () => {
+      peer.open = true;
+      emitState('connected', { role, connectedPeers: [...peers.values()].filter(p => p.open).length });
+    };
+    channel.onclose = () => {
+      peer.open = false;
       emitState('signaling', { role });
-    } else if (m.type === 'signal' && m.from === remoteId) {
-      if (m.data.description) { await pc.setRemoteDescription(m.data.description); if (m.data.description.type === 'offer') { const answer = await pc.createAnswer(); await pc.setLocalDescription(answer); sendSignal({ type:'signal', to:remoteId, data:{ description:pc.localDescription } }); } }
-      if (m.data.candidate) try { await pc.addIceCandidate(m.data.candidate); } catch {}
-    } else if (m.type === 'error') emitState('error', { message:m.message });
+    };
+    channel.onmessage = (event) => {
+      try {
+        const message = JSON.parse(event.data);
+        if (message && message.type === 'state') message.id = peerId;
+        messageCb(message);
+      } catch {}
+    };
   }
+  function ensurePeer(remoteId) {
+    if (!remoteId || remoteId === id || peers.has(remoteId)) return;
+    const initiator = id < remoteId;
+    const pc = new RTCPeerConnection({ iceServers: ICE });
+    const peer = { pc, channel: null, open: false, pendingCandidates: [] };
+    peers.set(remoteId, peer);
+    pc.onicecandidate = (event) => {
+      if (event.candidate) sendSignal({ type: 'signal', to: remoteId, data: { candidate: event.candidate } });
+    };
+    pc.ondatachannel = (event) => bindChannel(remoteId, event.channel);
+    pc.onconnectionstatechange = () => {
+      if (pc.connectionState === 'failed') emitState('error', { message: '部分玩家的 WebRTC 连接失败。可尝试更换网络；严格 NAT 网络可能需要 TURN 中继。' });
+      if (pc.connectionState === 'closed') closePeer(remoteId);
+    };
+    if (initiator) bindChannel(remoteId, pc.createDataChannel('madness-game', { ordered: true }));
+    if (initiator) {
+      pc.createOffer().then(offer => pc.setLocalDescription(offer)).then(() => {
+        sendSignal({ type: 'signal', to: remoteId, data: { description: pc.localDescription } });
+      }).catch(() => emitState('error', { message: '创建 WebRTC offer 失败。' }));
+    }
+  }
+  async function handleSignal(message) {
+    if (message.type === 'roster') {
+      const next = new Map((message.players || []).map(player => [player.id, player]));
+      for (const remoteId of peers.keys()) if (!next.has(remoteId)) closePeer(remoteId);
+      roster.clear();
+      for (const [peerId, player] of next) roster.set(peerId, player);
+      emitRoster();
+      for (const remoteId of next.keys()) ensurePeer(remoteId);
+      return;
+    }
+    if (message.type !== 'signal' || !message.from) return;
+    ensurePeer(message.from);
+    const peer = peers.get(message.from);
+    if (!peer) return;
+    const pc = peer.pc;
+    if (message.data?.description) {
+      await pc.setRemoteDescription(message.data.description);
+      if (message.data.description.type === 'offer') {
+        const answer = await pc.createAnswer();
+        await pc.setLocalDescription(answer);
+        sendSignal({ type: 'signal', to: message.from, data: { description: pc.localDescription } });
+      }
+      for (const candidate of peer.pendingCandidates.splice(0)) {
+        try { await pc.addIceCandidate(candidate); } catch {}
+      }
+    }
+    if (message.data?.candidate) {
+      if (pc.remoteDescription) {
+        try { await pc.addIceCandidate(message.data.candidate); } catch {}
+      } else peer.pendingCandidates.push(message.data.candidate);
+    }
+  }
+
   window.madnessP2P = {
-    connect(r, n) { room = String(r || 'LOCAL').toUpperCase(); name = String(n || 'Player'); emitState('signaling'); return new Promise((resolve,reject) => {
-      ws = new WebSocket(SIGNAL); ws.onopen = () => sendSignal({ type:'join', room, name });
-      ws.onmessage = e => { let m; try { m=JSON.parse(e.data); } catch { return; } if (m.type==='welcome') { id=m.id; role=m.role; emitState('solo',{waiting:true,role}); resolve(); } else signaling(m).catch(reject); };
-      ws.onerror = () => { emitState('error',{message:'无法连接 P2P 信令服务。'}); reject(new Error('无法连接 P2P 信令服务')); };
-      ws.onclose = () => emitState('idle');
-    }); },
-    send(m) { if (channel?.readyState !== 'open') return false; channel.send(JSON.stringify(m)); return true; },
-    connected() { return channel?.readyState === 'open'; }, myId() { return id; }, role() { return role; },
-    disconnect() { closePeer(); ws?.close(); ws=null; }, onState(cb) { stateCb=cb; }, onMessage(cb) { messageCb=cb; }, onRoster(cb) { rosterCb=cb; }
+    connect(roomCode, playerName) {
+      room = String(roomCode || 'MADNESS').trim().toUpperCase();
+      name = String(playerName || 'Player').trim();
+      closeAllPeers();
+      roster.clear();
+      emitState('signaling');
+      return new Promise((resolve, reject) => {
+        let settled = false;
+        ws = new WebSocket(SIGNAL);
+        ws.onopen = () => sendSignal({ type: 'join', room, name });
+        ws.onmessage = async (event) => {
+          let message;
+          try { message = JSON.parse(event.data); } catch { return; }
+          if (message.type === 'welcome') {
+            id = message.id;
+            role = message.role;
+            emitState('solo', { waiting: true, role });
+            if (!settled) { settled = true; resolve(); }
+          } else if (message.type === 'error') {
+            emitState('error', { message: message.message || '信令服务器错误。' });
+            if (!settled) { settled = true; reject(new Error(message.message || '信令服务器错误')); }
+          } else {
+            try { await handleSignal(message); }
+            catch (error) { emitState('error', { message: 'WebRTC 信令处理失败：' + error.message }); }
+          }
+        };
+        ws.onerror = () => {
+          emitState('error', { message: '无法连接 Railway 信令服务，请检查服务是否 Online。' });
+          if (!settled) { settled = true; reject(new Error('无法连接 P2P 信令服务')); }
+        };
+        ws.onclose = () => {
+          closeAllPeers();
+          roster.clear();
+          emitRoster();
+          emitState('idle');
+        };
+      });
+    },
+    send(message) {
+      if (!message || typeof message !== 'object') return false;
+      return broadcast(message);
+    },
+    connected() { return [...peers.values()].some(peer => peer.open); },
+    connectedCount() { return [...peers.values()].filter(peer => peer.open).length; },
+    myId() { return id; },
+    role() { return role; },
+    disconnect() {
+      closeAllPeers();
+      roster.clear();
+      ws?.close();
+      ws = null;
+      id = null;
+      role = null;
+    },
+    onState(callback) { stateCb = callback; },
+    onMessage(callback) { messageCb = callback; },
+    onRoster(callback) { rosterCb = callback; }
   };
 })();
