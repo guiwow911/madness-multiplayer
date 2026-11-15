@@ -1,35 +1,59 @@
-# 暴力迪吧联合计划 · 网页联机测试包
+# 暴力迪吧多人联机
 
-基于 Ruffle 在浏览器运行 SWF 游戏，提供两人局域网 PVP 房间。游戏文件与 Ruffle WASM 资源单个约 14–15 MB，均低于 GitHub 100 MiB 单文件限制。若网页提示超过 25 MB，那是网页上传提示；请用 Git 命令推送整个仓库。
+基于 Ruffle 在浏览器运行 SWF 游戏，提供最多 5 人房间和两种联机方式：
 
-## 启动
+- **P2P 公网联机**：Node.js 后端的 `/signal` WebSocket 路径负责交换 WebRTC 信令，游戏数据通过玩家之间的 WebRTC DataChannel 传输。
+- **局域网 / 本机联机**：Node.js 后端的 `/ws` WebSocket 路径转发房间状态与游戏事件。
 
-需要 Node.js 18 或更高版本。
+> 注意：P2P 当前仅配置 Google 公共 STUN（`stun:stun.l.google.com:19302`），没有配置 TURN。部分严格 NAT 或受限网络可能无法建立点对点连接。5 人公网联机仍需在不同网络环境下实际测试；信令连接成功不代表游戏同步已经完全验证。
 
-```sh
+## 环境要求
+
+- Node.js 20 或更高版本（建议 Ubuntu 24.04 LTS）。
+- npm。
+
+## 本地启动
+
+在项目根目录执行：
+
+```bash
 npm install
 npm start
 ```
 
-浏览器打开终端显示的 `http://localhost:8787`。局域网玩家访问主机显示的局域网 IP 地址，并选择相同房间代码。房主在两位玩家都加入后开始游戏。Windows 用户也可双击 `start.bat`。
+默认监听 `0.0.0.0:8787`。本机浏览器访问 `http://localhost:8787`。局域网内其他设备访问服务器的局域网 IP 和相同端口。
+
+## Ubuntu 服务器部署
+
+```bash
+git clone https://github.com/guiwow911/madness-multiplayer.git
+cd madness-multiplayer
+npm install
+npm start
+```
+
+生产环境建议使用 systemd 或进程管理器保持服务运行，并配置 HTTPS/WSS 反向代理。反向代理需支持 WebSocket Upgrade，并将 `/signal` 与 `/ws` 路径转发到 Node.js 服务。
+
+默认端口为 `8787`，可通过环境变量 `PORT` 修改；监听地址可通过 `HOST` 修改。
 
 ## 测试
 
-```sh
+```bash
 npm test
 ```
 
-## 联机模式
+`test-lan.js` 会启动本地测试服务器，并检查静态资源、局域网 WebSocket 房间、开局、命中和状态同步等基本流程。
 
-- 局域网模式通过 Node.js WebSocket 服务转发房间状态、命中和玩家事件。
-- 网页中预留了 P2P 模式界面；公网 P2P 需要可用的 WebRTC 信令服务。当前 `public/p2p.js` 中的信令端点为占位地址，尚未部署，因此公网 P2P 暂不可用。
+## 主要文件
 
-## 文件说明
+- `server.js`：HTTP 静态文件服务、局域网 `/ws` 和 WebRTC 信令 `/signal`。
+- `package.json` / `package-lock.json`：Node.js 项目配置与依赖锁定。
+- `public/index.html`：网页入口和游戏界面。
+- `public/client.js`：浏览器端大厅、游戏通信与 SWF 桥接。
+- `public/p2p.js`：WebRTC Mesh 公网联机客户端。
+- `public/style.css`：网页样式。
+- `public/game.swf`：游戏 SWF 文件。
+- `public/ruffle/`：本地 Ruffle Flash 兼容运行时及其 JS/WASM 资源。
+- `test-lan.js`：局域网服务自动化测试。
 
-- `public/game.swf`：游戏文件。
-- `public/ruffle/`：本地 Flash 运行时。
-- `server.js`：静态网页与局域网房间服务。
-- `public/client.js`：浏览器端游戏和房间客户端。
-- `public/p2p.js`：WebRTC 客户端原型。
-
-`node_modules/` 不提交到仓库，克隆后运行 `npm install` 安装依赖。
+`node_modules/` 不应提交到 GitHub；克隆后通过 `npm install` 安装依赖。
