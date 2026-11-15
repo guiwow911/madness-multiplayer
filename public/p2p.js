@@ -1,5 +1,5 @@
 (() => {
-  const SIGNAL = 'wss://madness-multiplayer-production.up.railway.app/signal';
+  const SIGNAL = `${window.location.protocol === 'https:' ? 'wss:' : 'ws:'}//${window.location.host}/signal`;
   const ICE = [{ urls: 'stun:stun.l.google.com:19302' }];
   let ws = null, id = null, role = null, room = null, name = null;
   const peers = new Map();
@@ -120,7 +120,7 @@
           if (settled) return;
           settled = true;
           try { ws.close(); } catch {}
-          const error = new Error('连接 Railway 信令服务器超时（12 秒）。请检查 Railway 部署状态、域名和 /signal WebSocket 路径。');
+          const error = new Error('连接当前网站的信令服务器超时（12 秒）。请检查服务器状态和 /signal WebSocket 路径。');
           emitState('error', { message: error.message });
           reject(error);
         }, 12000);
@@ -143,7 +143,7 @@
           }
         };
         ws.onerror = () => {
-          emitState('error', { message: '无法连接 Railway 信令服务，请检查服务是否 Online。' });
+          emitState('error', { message: '无法连接当前网站的信令服务，请检查服务器状态和 /signal WebSocket 路径。' });
           if (!settled) { settled = true; clearTimeout(connectionTimer); reject(new Error('无法连接 P2P 信令服务。目标地址：' + SIGNAL)); }
         };
         ws.onclose = (event) => {
