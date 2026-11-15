@@ -2,7 +2,7 @@
   "name": "web-lan",
   "version": "1.0.0",
   "description": "Local WebSocket multiplayer wrapper for the Madness Arena Flash build.",
-  "main": "index.js",
+  "main": "server.js",
   "scripts": {
     "start": "node server.js",
     "test": "node test-lan.js"
